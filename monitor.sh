@@ -2,49 +2,60 @@
 
 #-----------------------------------------------------------------------------#
 
-APP_PATH="/home/nox/packages/virsh_monitor"
-
-RUNNING="running"
-STOPPED="shut"
-ACTION_START="on_start"
-ACTION_STOP="on_stop"
-
-VM_STATE_DAT="vm_state.dat"
-VM_STATE_DAT_OLD="vm_state_old.dat"
-VM_PROFILES=$APP_PATH/profiles
-TIMEOUT=1
+# - APP_PATH: application path. The profile tree will be stored here.
+readonly APP_PATH="/home/nox/packages/virsh_monitor"
+readonly VM_PROFILES=$APP_PATH/profiles
+# - log path for virsh monitor
+readonly APP_LOG="$APP_PATH/virsh_monitor.log"
+# - TIMEOUT: The interval between VM changes scan.
+readonly TIMEOUT=1
 
 #-----------------------------------------------------------------------------#
 
-function log {
-    echo "[$(date)]: $*"
+readonly RUNNING="running"
+readonly STOPPED="shut"
+readonly ACTION_START="on_start"
+readonly ACTION_STOP="on_stop"
+readonly VM_STATE_DAT="vm_state.dat"
+readonly VM_STATE_DAT_OLD="vm_state_old.dat"
+
+#-----------------------------------------------------------------------------#
+
+log() {
+    echo "[$(date)]: $*" > $APP_LOG
 }
 
 function virsh_state_to_action() {
     local STATE=$1
+    local ACTION=""
 
     if [ "$STATE" = "$RUNNING" ]; then
-        echo "$ACTION_START"
+        ACTION=$ACTION_START
     elif [ "$STATE" = "$STOPPED" ]; then
-        echo "$ACTION_STOP"
+        ACTION=$ACTION_STOP
     fi
+    echo $ACTION
 }
+
 #-----------------------------------------------------------------------------#
 
-function update_vm_state() {
+update_vm_state() {
     if [ -f $VM_STATE_DAT ]; then
         mv $VM_STATE_DAT $VM_STATE_DAT_OLD
     fi
-    virsh list --all | sed 1,2d | head -n -1 | awk '{print " "$1 " "$2 " "$3 ""}' > $VM_STATE_DAT
+    virsh list --all | \
+        sed 1,2d | \
+        head -n -1 | \
+        awk '{print " "$1 " "$2 " "$3 ""}' > $VM_STATE_DAT
 }
 
 #-----------------------------------------------------------------------------#
 
-function run_scripts() {
+run_scripts() {
     local INSTANCE=$1
     local ACTION=$2
     local DIR=$VM_PROFILES/$ACTION/$INSTANCE
-    log $DIR
+
     for script in $DIR/*.sh; do
         log "running $DIR/$script"
         bash $script;
@@ -53,27 +64,28 @@ function run_scripts() {
 
 #-----------------------------------------------------------------------------#
 
-function handle_state_change() {
+handle_state_change() {
     local INSTANCE=$1
     local STATE=$2
-    if [ "$STATE" = "$RUNNING" ]; then
+
+    if [ "$STATE" = "$ACTION_START" ]; then
         log "state change, $INSTANCE moved to started"
-        run_script $STATE $INSTANCE
-    elif [ "$STATE = $STOPPING" ]; then
+        run_scripts $INSTANCE $STATE
+    elif [ "$STATE" = "$ACTION_STOP" ]; then
         log "state change, $INSTANCE moved to stopped"
-        run_scripts $STATE $INSTANCE
+        run_scripts $INSTANCE $STATE
     fi;
 }
 
 #-----------------------------------------------------------------------------#
 
-function check_state_change() {
+check_state_change() {
     if [ -f $VM_STATE_DAT_OLD ]; then
         while read id name state; do
             while read old_id old_name old_state; do
                 if [ "$name" = "$old_name" ]; then
                     if [ "$state" != "$old_state" ]; then
-                        local $action=virsh_state_to_action $state
+                        local action=$(virsh_state_to_action $state)
                         handle_state_change $name $action
                     fi;
                 fi;
@@ -84,7 +96,7 @@ function check_state_change() {
 
 #-----------------------------------------------------------------------------#
 
-function init_fs() {
+init_fs() {
     log "Creating file system"
     mkdir -p $VM_PROFILES
     log "Creating $VM_PROFILES/$ACTION_START"
@@ -101,7 +113,7 @@ function init_fs() {
 
 #-----------------------------------------------------------------------------#
 
-function worker() {
+worker() {
     update_vm_state
     init_fs
     log "starting worker..."
@@ -114,7 +126,7 @@ function worker() {
 
 #-----------------------------------------------------------------------------#
 
-function cleanup() {
+cleanup() {
     rm $VM_STATE_DAT
     rm $VM_STATE_DAT_OLD
 }
