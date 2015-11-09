@@ -127,12 +127,18 @@ worker() {
 #-----------------------------------------------------------------------------#
 
 cleanup() {
-    rm $VM_STATE_DAT
-    rm $VM_STATE_DAT_OLD
+    log "running cleanup..."
+    if [ -f $VM_STATE_DAT ]; then
+        rm $VM_STATE_DAT
+    fi
+    if [ -f $VM_STATE_DAT_OLD ]; then
+        rm $VM_STATE_DAT_OLD
+    fi
 }
 
 function main() {
     trap cleanup EXIT
+    cleanup
     log "Starting virsh monitor worker, timeout: $TIMEOUT"
     worker
 }
