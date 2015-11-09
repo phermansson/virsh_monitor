@@ -7,6 +7,8 @@ readonly APP_PATH="/home/nox/packages/virsh_monitor"
 readonly VM_PROFILES=$APP_PATH/profiles
 # - log path for virsh monitor
 readonly APP_LOG="$APP_PATH/virsh_monitor.log"
+# - temp path for virsh monitor
+readonly TMP_PATH="$APP_PATH/tmp"
 # - TIMEOUT: The interval between VM changes scan.
 readonly TIMEOUT=1
 
@@ -16,8 +18,8 @@ readonly RUNNING="running"
 readonly STOPPED="shut"
 readonly ACTION_START="on_start"
 readonly ACTION_STOP="on_stop"
-readonly VM_STATE_DAT="vm_state.dat"
-readonly VM_STATE_DAT_OLD="vm_state_old.dat"
+readonly VM_STATE_DAT="$TMP_PATH/vm_state.dat"
+readonly VM_STATE_DAT_OLD="$TMP_PATH/vm_state_old.dat"
 
 #-----------------------------------------------------------------------------#
 
@@ -40,9 +42,14 @@ function virsh_state_to_action() {
 #-----------------------------------------------------------------------------#
 
 update_vm_state() {
+    if [ ! -d $TMP_PATH ]; then
+        mkdir $TMP_PATH
+    fi
+
     if [ -f $VM_STATE_DAT ]; then
         mv $VM_STATE_DAT $VM_STATE_DAT_OLD
     fi
+
     virsh list --all | \
         sed 1,2d | \
         head -n -1 | \
