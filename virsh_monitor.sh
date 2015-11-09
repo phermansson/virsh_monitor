@@ -3,7 +3,7 @@
 #-----------------------------------------------------------------------------#
 
 # - APP_PATH: application path. The profile tree will be stored here.
-readonly APP_PATH="/home/nox/packages/virsh_monitor"
+readonly APP_PATH="$(pwd)"
 readonly VM_PROFILES=$APP_PATH/profiles
 # - log path for virsh monitor
 readonly APP_LOG="$APP_PATH/virsh_monitor.log"
