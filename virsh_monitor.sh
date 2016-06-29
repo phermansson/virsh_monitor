@@ -18,13 +18,16 @@ readonly RUNNING="running"
 readonly STOPPED="shut"
 readonly ACTION_START="on_start"
 readonly ACTION_STOP="on_stop"
+readonly VNIC_PATTERN="vnet"
 readonly VM_STATE_DAT="$TMP_PATH/vm_state.dat"
+readonly VM_NIC_DAT="$TMP_PATH/vm_nic.dat"
 readonly VM_STATE_DAT_OLD="$TMP_PATH/vm_state_old.dat"
+readonly VM_NIC_DAT_OLD="$TMP_PATH/vm_nic_old.dat"
 
 #-----------------------------------------------------------------------------#
 
 log() {
-    echo "[$(date)]: $*" > $APP_LOG
+    echo "[$(date)]: $*" >> $APP_LOG
 }
 
 function virsh_state_to_action() {
@@ -120,13 +123,68 @@ init_fs() {
 
 #-----------------------------------------------------------------------------#
 
+exist_in_file() {
+    local filename=$1
+    local line=$2
+ 
+    if [ -f $filename ]; then
+   	 if [[ -z $(grep -i "$line" "$filename") ]]
+    	then
+    	    return 1
+    	else
+    	    return 0
+        fi
+    else
+	return 1
+    fi
+}
+
+update_vm_nics() {
+
+    if [ -f $VM_NIC_DAT ]; then
+        mv $VM_NIC_DAT $VM_NIC_DAT_OLD
+    fi
+
+    while read id domain state; do
+    	if [ "$state" = "$RUNNING" ]; then
+            NIC=$(virsh dumpxml $domain | grep $VNIC_PATTERN | \
+	        awk -F"[=']" '{print $3}');
+	        local entry="$domain $NIC"
+                if ! exist_in_file ${VM_NIC_DAT} "${entry}"
+	        then
+		    echo 
+		    STATE=$(virsh domif-getlink "$domain" "$NIC")
+	    	    echo $domain $NIC $STATE >> $VM_NIC_DAT
+		    log "Nic added: $domain $NIC $STATE"
+	        fi
+	fi
+    done < $VM_STATE_DAT
+}
+
+check_nic_state_change() {
+    if [ -f $VM_NIC_DAT_OLD ]; then
+        while read name nic state; do
+            while read old_name old_nic old_state; do
+                if [ "$name" = "$old_name" && "$nic" = "$old_nic"]; then
+                    if [ "$state" != "$old_state" ]; then
+			log "$name $nic $old_state -> $state"
+			## TODO add event handler
+                    fi;
+                fi;
+            done < $VM_STATE_DAT_OLD
+        done < $VM_STATE_DAT;
+    fi
+}
+
 worker() {
     update_vm_state
+    update_vm_nics
     init_fs
     log "starting worker..."
     while true; do
         update_vm_state
         check_state_change
+	update_vm_nics
         sleep $TIMEOUT
     done;
 }
@@ -141,7 +199,13 @@ cleanup() {
     if [ -f $VM_STATE_DAT_OLD ]; then
         rm $VM_STATE_DAT_OLD
     fi
-}
+    if [ -f $VM_NIC_DAT ]; then
+        rm $VM_NIC_DAT
+    fi
+    if [ -f $VM_NIC_DAT_OLD ]; then
+        rm $VM_NIC_DAT_OLD
+    fi
+  }
 
 function main() {
     trap cleanup EXIT
