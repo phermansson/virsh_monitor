@@ -18,6 +18,8 @@ readonly RUNNING="running"
 readonly STOPPED="shut"
 readonly ACTION_START="on_start"
 readonly ACTION_STOP="on_stop"
+readonly ACTION_NIC_UP="on_nic_up"
+readonly ACTION_NIC_DOWN="on_nic_down"
 readonly VNIC_PATTERN="vnet"
 readonly VM_STATE_DAT="$TMP_PATH/vm_state.dat"
 readonly VM_NIC_DAT="$TMP_PATH/vm_nic.dat"
@@ -113,12 +115,20 @@ init_fs() {
     mkdir -p $VM_PROFILES/$ACTION_START
     log "Creating $VM_PROFILES/$ACTION_STOP"
     mkdir -p $VM_PROFILES/$ACTION_STOP
+    log "Creating $VM_PROFILES/$ACTION_NIC_UP"
+    mkdir -p $VM_PROFILES/$ACTION_NIC_UP
+    log "Creating $VM_PROFILES/$ACTION_NIC_DOWN"
+    mkdir -p $VM_PROFILES/$ACTION_NIC_DOWN
     while read id name state; do
         log "Creating $VM_PROFILES/$ACTION_STOP/$name"
         mkdir -p $VM_PROFILES/$ACTION_STOP/$name
         log "Creating $VM_PROFILES/$ACTION_START/$name"
         mkdir -p $VM_PROFILES/$ACTION_START/$name
-    done < $VM_STATE_DAT
+        log "Creating $VM_PROFILES/$ACTION_NIC_UP/$name"
+        mkdir -p $VM_PROFILES/$ACTION_NIC_UP/$name
+        log "Creating $VM_PROFILES/$ACTION_NIC_DOWN/$name"
+        mkdir -p $VM_PROFILES/$ACTION_NIC_DOWN/$name
+     done < $VM_STATE_DAT
 }
 
 #-----------------------------------------------------------------------------#
@@ -147,16 +157,20 @@ update_vm_nics() {
 
     while read id domain state; do
     	if [ "$state" = "$RUNNING" ]; then
-            NIC=$(virsh dumpxml $domain | grep $VNIC_PATTERN | \
-	        awk -F"[=']" '{print $3}');
-	        local entry="$domain $NIC"
-                if ! exist_in_file ${VM_NIC_DAT} "${entry}"
-	        then
-		    echo 
-		    STATE=$(virsh domif-getlink "$domain" "$NIC")
-	    	    echo $domain $NIC $STATE >> $VM_NIC_DAT
-		    log "Nic added: $domain $NIC $STATE"
-	        fi
+	    # fetch nics from the vm config and convert to space
+	    # separated list
+            nics=$(virsh dumpxml $domain | grep $VNIC_PATTERN | \
+	        awk -F"[=']" '{print $3}' | awk 1 ORS=' ');
+		for nic in $nics; do
+       		    STATE=$(virsh domif-getlink "$domain" "$nic")
+	            local entry="$domain $STATE"
+       		    if ! exist_in_file ${VM_NIC_DAT_OLD} "${entry}"
+	            then
+		    	STATE=$(virsh domif-getlink "$domain" "$nic")
+		        echo $domain $STATE >> $VM_NIC_DAT
+		    	log "Nic added: ${domain} ${STATE}"
+		    fi
+		done
 	fi
     done < $VM_STATE_DAT
 }
